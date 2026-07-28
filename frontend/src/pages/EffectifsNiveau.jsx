@@ -1,0 +1,172 @@
+import { useState, useEffect } from "react";
+import { getEtudiantsParNiveau, getEffectifs } from "../api/api";
+import { NIVEAUX } from "../utils/constants";
+import PageHeader from "../components/PageHeader";
+
+function EffectifsNiveau() {
+  const [niveauChoisi, setNiveauChoisi] = useState("L1");
+  const [etudiants, setEtudiants] = useState([]);
+  const [totalNiveau, setTotalNiveau] = useState(0);
+  const [effectifs, setEffectifs] = useState([]);
+  const [recherche, setRecherche] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    chargerEffectifs();
+  }, []);
+
+  useEffect(() => {
+    chargerEtudiantsParNiveau(niveauChoisi);
+  }, [niveauChoisi]);
+
+  async function chargerEffectifs() {
+    try {
+      const data = await getEffectifs();
+      setEffectifs(data);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function chargerEtudiantsParNiveau(niveau) {
+    try {
+      setLoading(true);
+      const data = await getEtudiantsParNiveau(niveau);
+      setEtudiants(data.etudiants);
+      setTotalNiveau(data.total);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function effectifDuNiveau(niveau) {
+    const item = effectifs.find((e) => e.niveau === niveau);
+    return item ? item.total : 0;
+  }
+
+  function changerNiveau(niveau) {
+    setNiveauChoisi(niveau);
+    setRecherche("");
+  }
+
+  function exporterListe() {
+    const entetes = ["Matricule", "Nom", "Prénoms", "Parcours", "Email"];
+    const lignes = etudiantsFiltres.map((etudiant) => [
+      etudiant.matricule,
+      etudiant.nom,
+      etudiant.prenoms,
+      etudiant.parcours,
+      etudiant.adr_email ?? "",
+    ]);
+    const csv = [entetes, ...lignes]
+      .map((ligne) => ligne.map((valeur) => `"${String(valeur).replaceAll('"', '""')}"`).join(";"))
+      .join("\n");
+    const lien = document.createElement("a");
+    lien.href = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+    lien.download = `effectifs-${niveauChoisi}.csv`;
+    lien.click();
+    URL.revokeObjectURL(lien.href);
+  }
+
+  const totalGeneral = effectifs.reduce((acc, e) => acc + e.total, 0);
+  const terme = recherche.trim().toLocaleLowerCase();
+  const etudiantsFiltres = etudiants.filter((etudiant) =>
+    [etudiant.matricule, etudiant.nom, etudiant.prenoms]
+      .some((valeur) => String(valeur ?? "").toLocaleLowerCase().includes(terme))
+  );
+
+  return (
+    <div className="effectifs-page">
+      <PageHeader
+        title="Effectifs par niveau"
+        description="Visualisez la répartition des étudiants, puis consultez le détail d'un niveau."
+        instruction="Sélectionnez un niveau pour mettre à jour la liste détaillée automatiquement."
+        actions={<button className="export-button" type="button" onClick={exporterListe}><span aria-hidden="true">↓</span>Exporter</button>}
+      />
+
+      {error && <p style={{ color: "red" }}>{error}</p>}
+
+      <section aria-labelledby="recapitulatif-title">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Vue d'ensemble</p>
+            <h3 id="recapitulatif-title">Récapitulatif des effectifs</h3>
+          </div>
+          <p>Nombre d'étudiants enregistrés par niveau.</p>
+        </div>
+        <div className="effectif-summary-grid">
+          {NIVEAUX.map((niveau) => (
+            <article className="effectif-summary-card" key={niveau}>
+              <span>{niveau}</span>
+              <strong>{effectifDuNiveau(niveau)}</strong>
+              <small>étudiants</small>
+            </article>
+          ))}
+          <article className="effectif-summary-card effectif-summary-total">
+            <span>Total</span>
+            <strong>{totalGeneral}</strong>
+            <small>étudiants</small>
+          </article>
+        </div>
+      </section>
+
+      <section className="effectif-details" aria-labelledby="details-title">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Liste détaillée</p>
+            <h3 id="details-title">Étudiants du niveau {niveauChoisi}</h3>
+          </div>
+          <p><strong>{totalNiveau}</strong> étudiant{totalNiveau > 1 ? "s" : ""} au total</p>
+        </div>
+
+        <div className="effectif-toolbar">
+          <div className="niveau-tabs" role="tablist" aria-label="Choisir un niveau">
+            {NIVEAUX.map((niveau) => (
+              <button
+                className={niveau === niveauChoisi ? "active" : ""}
+                key={niveau}
+                type="button"
+                role="tab"
+                aria-selected={niveau === niveauChoisi}
+                onClick={() => changerNiveau(niveau)}
+              >
+                {niveau} <span>· {effectifDuNiveau(niveau)}</span>
+              </button>
+            ))}
+          </div>
+          <label className="effectif-search">
+            <span aria-hidden="true">⌕</span>
+            <input type="search" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher un étudiant" aria-label="Rechercher un étudiant" />
+          </label>
+        </div>
+
+        {loading ? (
+          <p className="loading-state">Chargement des étudiants…</p>
+        ) : etudiantsFiltres.length === 0 ? (
+          <div className="effectif-empty-state">
+            <span aria-hidden="true">♙</span>
+            <h3>{recherche ? "Aucun résultat trouvé" : `Aucun étudiant en ${niveauChoisi} pour le moment.`}</h3>
+            <p>{recherche ? "Essayez un autre nom, prénom ou matricule." : "Les étudiants ajoutés à ce niveau apparaîtront ici."}</p>
+          </div>
+        ) : (
+          <table>
+            <colgroup>
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "22%" }} />
+              <col style={{ width: "23%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "20%" }} />
+            </colgroup>
+            <thead><tr><th>Matricule</th><th>Nom</th><th>Prénoms</th><th>Parcours</th><th>Email</th></tr></thead>
+            <tbody>{etudiantsFiltres.map((e) => <tr key={e.matricule}><td>{e.matricule}</td><td>{e.nom}</td><td>{e.prenoms}</td><td>{e.parcours}</td><td>{e.adr_email}</td></tr>)}</tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export default EffectifsNiveau;

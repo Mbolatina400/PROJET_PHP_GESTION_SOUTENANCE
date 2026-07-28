@@ -1,0 +1,17 @@
+{
+    "name": "gestion-soutenances/backend",
+    "description": "API REST PHP MVC pour la gestion des soutenances",
+    "type": "project",
+    "require": {
+        "php": ">=8.0",
+        "dompdf/dompdf": "^2.0"
+    },
+    "autoload": {
+        "classmap": [
+            "core/",
+            "models/",
+            "controllers/",
+            "helpers/"
+        ]
+    }
+}
