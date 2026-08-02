@@ -4,6 +4,55 @@ CREATE DATABASE IF NOT EXISTS gestion_soutenances
 
 USE gestion_soutenances;
 
+CREATE TABLE IF NOT EXISTS utilisateurs (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    username VARCHAR(50) NOT NULL,
+    email VARCHAR(150) NOT NULL,
+    nom VARCHAR(150) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role ENUM('admin', 'utilisateur') NOT NULL DEFAULT 'utilisateur',
+    actif TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_utilisateurs_username (username),
+    UNIQUE KEY uq_utilisateurs_email (email)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS journal_activite (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    utilisateur_id INT UNSIGNED NULL,
+    username VARCHAR(50) NULL,
+    action VARCHAR(10) NOT NULL,
+    chemin VARCHAR(255) NOT NULL,
+    details TEXT NULL,
+    adresse_ip VARCHAR(45) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_journal_created_at (created_at),
+    INDEX idx_journal_utilisateur (utilisateur_id),
+    CONSTRAINT fk_journal_utilisateur FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS permissions (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    code VARCHAR(100) NOT NULL,
+    resource VARCHAR(50) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    label VARCHAR(150) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_permissions_code (code),
+    UNIQUE KEY uq_permissions_resource_action (resource, action)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS utilisateur_permissions (
+    utilisateur_id INT UNSIGNED NOT NULL,
+    permission_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (utilisateur_id, permission_id),
+    CONSTRAINT fk_utilisateur_permissions_utilisateur FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    CONSTRAINT fk_utilisateur_permissions_permission FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS etudiant (
     matricule VARCHAR(20) NOT NULL,
     nom VARCHAR(100) NOT NULL,
@@ -30,6 +79,21 @@ CREATE TABLE IF NOT EXISTS organisme (
     design VARCHAR(150) NOT NULL,
     lieu VARCHAR(150) NOT NULL,
     PRIMARY KEY (idorg)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS etablissement (
+    id TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    nom VARCHAR(180) NOT NULL,
+    sigle VARCHAR(30) NULL,
+    faculte VARCHAR(180) NULL,
+    adresse VARCHAR(255) NULL,
+    ville VARCHAR(100) NULL,
+    telephone VARCHAR(50) NULL,
+    email VARCHAR(150) NULL,
+    site_web VARCHAR(180) NULL,
+    logo_path VARCHAR(255) NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT chk_etablissement_singleton CHECK (id = 1)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS soutenir (

@@ -23,7 +23,7 @@ class SoutenirController extends Controller
     public function show(string $id): void
     {
         try {
-            $soutenance = $this->model->find((int) $id);
+            $soutenance = $this->model->details((int) $id);
             $soutenance ? $this->jsonResponse(true, $soutenance) : $this->jsonResponse(false, null, 404, 'Soutenance introuvable');
         } catch (Throwable $exception) {
             $this->handleException($exception);
@@ -91,6 +91,15 @@ class SoutenirController extends Controller
         }
     }
 
+    public function formData(): void
+    {
+        try {
+            $this->jsonResponse(true, $this->model->formData());
+        } catch (Throwable $exception) {
+            $this->handleException($exception);
+        }
+    }
+
     public function procesVerbal(string $id): void
     {
         try {
@@ -100,7 +109,7 @@ class SoutenirController extends Controller
                 return;
             }
 
-            $pdf = PdfGenerator::procesVerbal($data);
+            $pdf = PdfGenerator::procesVerbal($data, (new Etablissement())->get());
             header('Content-Type: application/pdf');
             header('Content-Disposition: attachment; filename="proces-verbal-' . (int) $id . '.pdf"');
             header('Content-Length: ' . strlen($pdf));

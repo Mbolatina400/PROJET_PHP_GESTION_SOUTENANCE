@@ -1,16 +1,18 @@
 import { useState, useEffect } from "react";
-import { getEtudiantsParNiveau, getEffectifs } from "../api/api";
+import { getEtudiantsParNiveau, getRapportEffectifs } from "../api/api";
 import { NIVEAUX } from "../utils/constants";
 import PageHeader from "../components/PageHeader";
+import { notify } from "../components/Feedback";
 
 function EffectifsNiveau() {
   const [niveauChoisi, setNiveauChoisi] = useState("L1");
   const [etudiants, setEtudiants] = useState([]);
   const [totalNiveau, setTotalNiveau] = useState(0);
   const [effectifs, setEffectifs] = useState([]);
+  const [resultats, setResultats] = useState([]);
   const [recherche, setRecherche] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
 
   useEffect(() => {
     chargerEffectifs();
@@ -22,10 +24,17 @@ function EffectifsNiveau() {
 
   async function chargerEffectifs() {
     try {
-      const data = await getEffectifs();
-      setEffectifs(data);
+      const data = await getRapportEffectifs();
+      setEffectifs(Array.isArray(data.effectifs) ? data.effectifs.map((item) => ({ ...item, total: Number(item.total) || 0 })) : []);
+      setResultats(Array.isArray(data.resultats) ? data.resultats.map((item) => ({
+        ...item,
+        total: Number(item.total) || 0,
+        reussites: Number(item.reussites) || 0,
+        moyenne: item.moyenne == null ? null : Number(item.moyenne),
+      })) : []);
     } catch (err) {
       setError(err.message);
+      notify(err.message, "error");
     }
   }
 
@@ -37,6 +46,7 @@ function EffectifsNiveau() {
       setTotalNiveau(data.total);
     } catch (err) {
       setError(err.message);
+      notify(err.message, "error");
     } finally {
       setLoading(false);
     }
@@ -47,19 +57,20 @@ function EffectifsNiveau() {
     return item ? item.total : 0;
   }
 
+  function resultatDuNiveau(niveau) { return resultats.find((resultat) => resultat.niveau === niveau); }
+
   function changerNiveau(niveau) {
     setNiveauChoisi(niveau);
     setRecherche("");
   }
 
   function exporterListe() {
-    const entetes = ["Matricule", "Nom", "Prénoms", "Parcours", "Email"];
+    const entetes = ["Matricule", "Nom", "Prénoms", "Parcours"];
     const lignes = etudiantsFiltres.map((etudiant) => [
       etudiant.matricule,
       etudiant.nom,
       etudiant.prenoms,
       etudiant.parcours,
-      etudiant.adr_email ?? "",
     ]);
     const csv = [entetes, ...lignes]
       .map((ligne) => ligne.map((valeur) => `"${String(valeur).replaceAll('"', '""')}"`).join(";"))
@@ -69,9 +80,12 @@ function EffectifsNiveau() {
     lien.download = `effectifs-${niveauChoisi}.csv`;
     lien.click();
     URL.revokeObjectURL(lien.href);
+    notify(`La liste des étudiants ${niveauChoisi} a été exportée.`);
   }
 
   const totalGeneral = effectifs.reduce((acc, e) => acc + e.total, 0);
+  const totalSoutenances = resultats.reduce((total, resultat) => total + resultat.total, 0);
+  const moyenneGenerale = resultats.reduce((total, resultat) => total + ((resultat.moyenne ?? 0) * resultat.total), 0) / (totalSoutenances || 1);
   const terme = recherche.trim().toLocaleLowerCase();
   const etudiantsFiltres = etudiants.filter((etudiant) =>
     [etudiant.matricule, etudiant.nom, etudiant.prenoms]
@@ -86,8 +100,6 @@ function EffectifsNiveau() {
         instruction="Sélectionnez un niveau pour mettre à jour la liste détaillée automatiquement."
         actions={<button className="export-button" type="button" onClick={exporterListe}><span aria-hidden="true">↓</span>Exporter</button>}
       />
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
 
       <section aria-labelledby="recapitulatif-title">
         <div className="section-heading">
@@ -110,6 +122,32 @@ function EffectifsNiveau() {
             <strong>{totalGeneral}</strong>
             <small>étudiants</small>
           </article>
+        </div>
+      </section>
+
+      <section className="statistics-panel" aria-labelledby="statistics-title">
+        <div className="section-heading">
+          <div><p className="section-kicker">Tableau de bord</p><h3 id="statistics-title">Résultats par niveau</h3></div>
+          <p>Les effectifs sont présentés ci-dessus. Les moyennes reposent sur les soutenances enregistrées.</p>
+        </div>
+        <div className="kpi-grid" aria-label="Indicateurs clés">
+          <article><span>Soutenances</span><strong>{totalSoutenances}</strong></article>
+          <article><span>Moyenne générale</span><strong>{totalSoutenances ? `${moyenneGenerale.toFixed(1)}/20` : "—"}</strong></article>
+          <article><span>Réussite ≥ 10/20</span><strong>{totalSoutenances ? `${Math.round((resultats.reduce((total, resultat) => total + resultat.reussites, 0) / totalSoutenances) * 100)}%` : "—"}</strong></article>
+        </div>
+        <div className="results-list results-list-wide">
+          {NIVEAUX.map((niveau) => {
+            const resultat = resultatDuNiveau(niveau);
+            const moyenne = resultat?.moyenne;
+            const moyenneLabel = moyenne == null ? "Aucune note" : `${moyenne.toFixed(1)}/20`;
+            return <article className="result-row" key={niveau}>
+              <span className={`level-badge level-${niveau.toLowerCase()}`}>{niveau}</span>
+              <div className="result-progress" aria-label={`Moyenne ${niveau}: ${moyenneLabel}`}>
+                <span className="result-progress-track"><span className="result-progress-value" style={{ width: `${moyenne == null ? 0 : (moyenne / 20) * 100}%` }} /></span>
+              </div>
+              <div className="result-score"><strong>{moyenneLabel}</strong><small>{resultat?.total ?? 0} soutenance{resultat?.total > 1 ? "s" : ""}</small></div>
+            </article>;
+          })}
         </div>
       </section>
 
@@ -158,10 +196,9 @@ function EffectifsNiveau() {
               <col style={{ width: "22%" }} />
               <col style={{ width: "23%" }} />
               <col style={{ width: "17%" }} />
-              <col style={{ width: "20%" }} />
             </colgroup>
-            <thead><tr><th>Matricule</th><th>Nom</th><th>Prénoms</th><th>Parcours</th><th>Email</th></tr></thead>
-            <tbody>{etudiantsFiltres.map((e) => <tr key={e.matricule}><td>{e.matricule}</td><td>{e.nom}</td><td>{e.prenoms}</td><td>{e.parcours}</td><td>{e.adr_email}</td></tr>)}</tbody>
+            <thead><tr><th>Matricule</th><th>Nom</th><th>Prénoms</th><th>Parcours</th></tr></thead>
+            <tbody>{etudiantsFiltres.map((e) => <tr key={e.matricule}><td>{e.matricule}</td><td>{e.nom}</td><td>{e.prenoms}</td><td><span className={`parcours-badge parcours-${String(e.parcours).toLowerCase()}`}>{e.parcours}</span></td></tr>)}</tbody>
           </table>
         )}
       </section>

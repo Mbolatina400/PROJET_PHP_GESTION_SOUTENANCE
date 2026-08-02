@@ -7,13 +7,14 @@ use Dompdf\Options;
 
 class PdfGenerator
 {
-    public static function procesVerbal(array $data): string
+    public static function procesVerbal(array $data, array $etablissement = []): string
     {
         if (!class_exists(Dompdf::class)) {
             throw new RuntimeException('Dompdf est indisponible. Exécutez composer install dans le dossier backend.');
         }
 
         $noteEnLettres = self::numberToFrench((int) $data['note']);
+        $logoDataUri = self::logoDataUri($etablissement['logo_path'] ?? null);
 
         ob_start();
         require dirname(__DIR__) . '/views/pdf/proces_verbal_template.php';
@@ -58,5 +59,19 @@ class PdfGenerator
         ];
 
         return $numbers[$number] ?? (string) $number;
+    }
+
+    private static function logoDataUri(?string $filename): ?string
+    {
+        if (!$filename) {
+            return null;
+        }
+        $file = dirname(__DIR__) . '/public/uploads/' . basename($filename);
+        if (!is_file($file)) {
+            return null;
+        }
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file);
+        $content = file_get_contents($file);
+        return $mime && $content !== false ? 'data:' . $mime . ';base64,' . base64_encode($content) : null;
     }
 }

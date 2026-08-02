@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { getNotesParPeriode } from "../api/api";
 import PageHeader from "../components/PageHeader";
+import { notify } from "../components/Feedback";
 
 function NotesParPeriode() {
   const [debut, setDebut] = useState("");
   const [fin, setFin] = useState("");
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
   const [aRecherche, setARecherche] = useState(false);
+  const scoreClass = (note) => note >= 16 ? "score-excellent" : note >= 12 ? "score-good" : note >= 10 ? "score-average" : "score-low";
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -18,8 +20,10 @@ function NotesParPeriode() {
       const data = await getNotesParPeriode(debut, fin);
       setNotes(data);
       setARecherche(true);
+      notify(`${data.length} note${data.length > 1 ? "s" : ""} trouvée${data.length > 1 ? "s" : ""}.`);
     } catch (err) {
       setError(err.message);
+      notify(err.message, "error");
     } finally {
       setLoading(false);
     }
@@ -30,24 +34,20 @@ function NotesParPeriode() {
       <PageHeader title="Notes par période" description="Comparez les résultats obtenus sur une plage d'années universitaires." instruction="Saisissez les années au format AAAA-AAAA, puis lancez la recherche." />
 
       <form className="notes-search-form" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="Année début (ex: 2022-2023)"
+        <label className="form-field"><span>Année de début <b>*</b></span><input
+          type="text" placeholder="ex. 2022-2023" pattern="[0-9]{4}-[0-9]{4}"
           value={debut}
           onChange={(e) => setDebut(e.target.value)}
           required
-        />
-        <input
-          type="text"
-          placeholder="Année fin (ex: 2024-2025)"
+        /></label>
+        <label className="form-field"><span>Année de fin <b>*</b></span><input
+          type="text" placeholder="ex. 2024-2025" pattern="[0-9]{4}-[0-9]{4}"
           value={fin}
           onChange={(e) => setFin(e.target.value)}
           required
-        />
+        /></label>
         <button type="submit">Rechercher</button>
       </form>
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
 
       {loading ? (
         <p>Chargement...</p>
@@ -82,7 +82,7 @@ function NotesParPeriode() {
                   <td>{n.nom}</td>
                   <td>{n.prenoms}</td>
                   <td>{n.annee_univ}</td>
-                  <td>{n.note}/20</td>
+                  <td><span className={`score-badge ${scoreClass(Number(n.note))}`}>{n.note}/20</span></td>
                 </tr>
               ))
             )}

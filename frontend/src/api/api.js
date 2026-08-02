@@ -1,12 +1,17 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
+let csrfToken = null;
+
+export function setCsrfToken(token) { csrfToken = token || null; }
 
 async function request(endpoint, options = {}) {
   let response;
 
   try {
     response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
         ...options.headers,
       },
       ...options,
@@ -54,9 +59,54 @@ export function getEffectifs() {
   return request("/etudiants/effectifs");
 }
 
+export function getRapportEffectifs() {
+  return request("/rapports/effectifs");
+}
+
 export function getEtudiantsNonSoutenus() {
   return request("/etudiants/non-soutenus");
 }
+
+// ==================== ÉTABLISSEMENT ====================
+export function getEtablissement() {
+  return request("/etablissement");
+}
+
+export function updateEtablissement(data) {
+  return request("/etablissement", { method: "PUT", body: JSON.stringify(data) });
+}
+
+export async function uploadLogoEtablissement(file) {
+  const formData = new FormData();
+  formData.append("logo", file);
+  const response = await fetch(`${API_BASE_URL}/etablissement/logo`, { method: "POST", body: formData, credentials: "include", headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {} });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || result?.success === false) throw new Error(result?.message || result?.error || "Impossible d'importer le logo");
+  return result?.data ?? result;
+}
+
+export function deleteLogoEtablissement() {
+  return request("/etablissement/logo", { method: "DELETE" });
+}
+
+export function getEtablissementLogoUrl() {
+  return `${API_BASE_URL}/etablissement/logo`;
+}
+
+// ==================== AUTHENTIFICATION ====================
+export function login(credentials) { return request("/auth/login", { method: "POST", body: JSON.stringify(credentials) }); }
+export function logout() { return request("/auth/logout", { method: "POST" }); }
+export function getCurrentUser() { return request("/auth/me"); }
+export function changePassword(data) { return request("/auth/password", { method: "PUT", body: JSON.stringify(data) }); }
+
+// ==================== UTILISATEURS ====================
+export function getUtilisateurs() { return request("/utilisateurs"); }
+export function createUtilisateur(data) { return request("/utilisateurs", { method: "POST", body: JSON.stringify(data) }); }
+export function updateUtilisateur(id, data) { return request(`/utilisateurs/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(data) }); }
+export function getPermissions() { return request("/permissions"); }
+export function getUtilisateurPermissions(id) { return request(`/utilisateurs/${encodeURIComponent(id)}/permissions`); }
+export function updateUtilisateurPermissions(id, permissionIds) { return request(`/utilisateurs/${encodeURIComponent(id)}/permissions`, { method: "PUT", body: JSON.stringify({ permission_ids: permissionIds }) }); }
+export function getJournalActivite() { return request("/audit"); }
 
 export function createEtudiant(data) {
   return request("/etudiants", {
@@ -139,6 +189,10 @@ export function deleteOrganisme(idorg) {
 // ==================== SOUTENANCES ====================
 export function getSoutenances() {
   return request("/soutenances");
+}
+
+export function getSoutenanceFormData() {
+  return request("/soutenances/form-data");
 }
 
 export function getSoutenance(id) {

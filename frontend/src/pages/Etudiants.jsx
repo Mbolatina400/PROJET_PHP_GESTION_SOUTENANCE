@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   getEtudiants,
   createEtudiant,
@@ -8,11 +8,18 @@ import {
 } from "../api/api";
 import { NIVEAUX, PARCOURS } from "../utils/constants";
 import PageHeader from "../components/PageHeader";
+import TableActionIcon from "../components/TableActionIcon";
+import { confirmAction, notify } from "../components/Feedback";
+import TablePagination from "../components/TablePagination";
+import EmptyState from "../components/EmptyState";
+import LoadingSkeleton from "../components/LoadingSkeleton";
+import { useAuth } from "../components/AuthContext";
 
 function Etudiants() {
+  const { can } = useAuth();
   const [etudiants, setEtudiants] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [niveauFiltre, setNiveauFiltre] = useState("");
   const [parcoursFiltre, setParcoursFiltre] = useState("");
@@ -21,6 +28,8 @@ function Etudiants() {
     matricule: "", nom: "", prenoms: "", niveau: "L1", parcours: "GB", adr_email: "",
   });
   const [isEditing, setIsEditing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState("nom");
 
   useEffect(() => { chargerEtudiants(); }, []);
 
@@ -29,7 +38,7 @@ function Etudiants() {
       setLoading(true);
       setError(null);
       setEtudiants(await getEtudiants());
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
+    } catch (err) { setError(err.message); notify(err.message, "error"); } finally { setLoading(false); }
   }
 
   async function handleSearch(e) {
@@ -39,7 +48,7 @@ function Etudiants() {
       setLoading(true);
       setError(null);
       setEtudiants(await rechercherEtudiants(search.trim()));
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
+    } catch (err) { setError(err.message); notify(err.message, "error"); } finally { setLoading(false); }
   }
 
   function handleChange(e) { setFormData({ ...formData, [e.target.name]: e.target.value }); }
@@ -54,9 +63,10 @@ function Etudiants() {
       };
       if (isEditing) await updateEtudiant(formData.matricule, dataToSend);
       else await createEtudiant(dataToSend);
+      notify(isEditing ? "Le dossier étudiant a été mis à jour." : "L'étudiant a été ajouté.");
       resetForm();
       chargerEtudiants();
-    } catch (err) { setError(err.message); }
+    } catch (err) { setError(err.message); notify(err.message, "error"); }
   }
 
   function handleEdit(etudiant) {
@@ -66,12 +76,13 @@ function Etudiants() {
   }
 
   async function handleDelete(matricule) {
-    if (!confirm("Supprimer cet étudiant ?")) return;
+    if (!await confirmAction({ title: "Supprimer cet étudiant ?", message: "Cette action est définitive et retirera le dossier de la liste." })) return;
     try {
       setError(null);
       await deleteEtudiant(matricule);
+      notify("L'étudiant a été supprimé.");
       chargerEtudiants();
-    } catch (err) { setError(err.message); }
+    } catch (err) { setError(err.message); notify(err.message, "error"); }
   }
 
   function resetForm() {
@@ -84,6 +95,13 @@ function Etudiants() {
     (!niveauFiltre || etudiant.niveau === niveauFiltre) &&
     (!parcoursFiltre || etudiant.parcours === parcoursFiltre)
   );
+  const etudiantsTries = useMemo(() => [...etudiantsFiltres].sort((a, b) =>
+    String(a[sortKey] ?? "").localeCompare(String(b[sortKey] ?? ""), "fr", { sensitivity: "base" })
+  ), [etudiantsFiltres, sortKey]);
+  const pageSize = 8;
+  const etudiantsPage = etudiantsTries.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => setPage(1), [search, niveauFiltre, parcoursFiltre, sortKey]);
 
   function initiales(etudiant) {
     return `${etudiant.nom?.[0] ?? ""}${etudiant.prenoms?.[0] ?? ""}`.toUpperCase();
@@ -95,15 +113,13 @@ function Etudiants() {
         title="Étudiants"
         description="Centralisez les dossiers étudiants et retrouvez rapidement une fiche."
         instruction="Utilisez les filtres pour affiner la liste, puis ouvrez le formulaire pour créer ou modifier un dossier."
-        actions={<button className="header-add-button" type="button" onClick={() => { setIsEditing(false); setFormulaireOuvert(true); }}>+ Ajouter</button>}
+        actions={can("etudiants", "ajouter") && <button className="header-add-button" type="button" onClick={() => { setIsEditing(false); setFormulaireOuvert(true); }}>+ Ajouter</button>}
       />
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
 
       <form className="student-search-form" onSubmit={handleSearch}>
         <label className="student-search-input">
           <span aria-hidden="true">⌕</span>
-          <input type="search" placeholder="Rechercher par matricule ou nom..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input type="search" aria-label="Rechercher par matricule ou nom" placeholder="Rechercher par matricule ou nom..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </label>
         <select value={niveauFiltre} onChange={(e) => setNiveauFiltre(e.target.value)} aria-label="Filtrer par niveau">
           <option value="">Tous les niveaux</option>
@@ -116,32 +132,32 @@ function Etudiants() {
         <button type="submit">Rechercher</button>
       </form>
 
-      <section className="student-form-section">
+      {(can("etudiants", "ajouter") || can("etudiants", "modifier")) && <section className="student-form-section">
         <button className="student-form-toggle" type="button" aria-expanded={formulaireOuvert} onClick={() => setFormulaireOuvert(!formulaireOuvert)}>
           <span>{isEditing ? "Modifier l'étudiant" : "Ajouter un étudiant"}</span><span className="toggle-chevron" aria-hidden="true">⌄</span>
         </button>
         {formulaireOuvert && (
           <form className="student-form" onSubmit={handleSubmit}>
-            <input name="matricule" placeholder="Matricule" value={formData.matricule} onChange={handleChange} disabled={isEditing} required />
-            <input name="nom" placeholder="Nom" value={formData.nom} onChange={handleChange} required />
-            <input name="prenoms" placeholder="Prénoms" value={formData.prenoms} onChange={handleChange} required />
-            <select name="niveau" value={formData.niveau} onChange={handleChange}>{NIVEAUX.map((n) => <option key={n} value={n}>{n}</option>)}</select>
-            <select name="parcours" value={formData.parcours} onChange={handleChange}>{PARCOURS.map((p) => <option key={p} value={p}>{p}</option>)}</select>
-            <input name="adr_email" type="email" placeholder="Email (optionnel)" value={formData.adr_email} onChange={handleChange} />
+            <label className="form-field"><span>Matricule <b>*</b></span><input name="matricule" value={formData.matricule} onChange={handleChange} disabled={isEditing} required minLength="2" /></label>
+            <label className="form-field"><span>Nom <b>*</b></span><input name="nom" value={formData.nom} onChange={handleChange} required minLength="2" /></label>
+            <label className="form-field"><span>Prénoms <b>*</b></span><input name="prenoms" value={formData.prenoms} onChange={handleChange} required minLength="2" /></label>
+            <label className="form-field"><span>Niveau <b>*</b></span><select name="niveau" value={formData.niveau} onChange={handleChange} required>{NIVEAUX.map((n) => <option key={n} value={n}>{n}</option>)}</select></label>
+            <label className="form-field"><span>Parcours <b>*</b></span><select name="parcours" value={formData.parcours} onChange={handleChange} required>{PARCOURS.map((p) => <option key={p} value={p}>{p}</option>)}</select></label>
+            <label className="form-field"><span>Email <em>optionnel</em></span><input name="adr_email" type="email" value={formData.adr_email} onChange={handleChange} /></label>
             <div className="student-form-actions">
               <button type="submit">{isEditing ? "Enregistrer" : "Ajouter"}</button>
               <button type="button" onClick={resetForm}>Annuler</button>
             </div>
           </form>
         )}
-      </section>
+      </section>}
 
       <section className="student-list-section" aria-labelledby="student-list-title">
         <div className="section-heading">
           <div><p className="section-kicker">Répertoire</p><h3 id="student-list-title">Liste des étudiants</h3></div>
-          <p><strong>{etudiantsFiltres.length}</strong> résultat{etudiantsFiltres.length > 1 ? "s" : ""}</p>
+          <div className="table-heading-actions"><label>Trier par <select value={sortKey} onChange={(e) => setSortKey(e.target.value)}><option value="nom">Nom</option><option value="matricule">Matricule</option><option value="niveau">Niveau</option><option value="parcours">Parcours</option></select></label><p><strong>{etudiantsFiltres.length}</strong> résultat{etudiantsFiltres.length > 1 ? "s" : ""}</p></div>
         </div>
-        {loading ? <p className="loading-state">Chargement des étudiants…</p> : (
+        {loading ? <LoadingSkeleton /> : (
           <table>
             <colgroup>
               <col style={{ width: "12%" }} />
@@ -153,21 +169,22 @@ function Etudiants() {
             </colgroup>
             <thead><tr><th>Matricule</th><th>Étudiant</th><th>Niveau</th><th>Parcours</th><th>Email</th><th className="student-actions-heading">Actions</th></tr></thead>
             <tbody>
-              {etudiantsFiltres.length === 0 ? <tr><td colSpan="6" className="student-no-result">Aucun étudiant ne correspond aux filtres sélectionnés.</td></tr> : etudiantsFiltres.map((e) => (
+              {etudiantsFiltres.length === 0 ? <tr><td colSpan="6"><EmptyState title="Aucun étudiant trouvé" description="Modifiez les filtres ou créez un premier dossier étudiant." action={can("etudiants", "ajouter") && <button type="button" onClick={() => { setIsEditing(false); setFormulaireOuvert(true); }}>Ajouter un étudiant</button>} /></td></tr> : etudiantsPage.map((e) => (
                 <tr key={e.matricule}>
-                  <td>{e.matricule}</td>
-                  <td><div className="student-identity"><span className="student-avatar">{initiales(e)}</span><span>{e.nom} {e.prenoms}</span></div></td>
-                  <td><span className="level-badge">{e.niveau}</span></td>
-                  <td>{e.parcours}</td><td>{e.adr_email}</td>
-                  <td className="student-actions">
-                    <button className="icon-button" type="button" onClick={() => handleEdit(e)} aria-label={`Modifier ${e.nom} ${e.prenoms}`} data-tooltip="Modifier">✎</button>
-                    <button className="icon-button icon-button-danger" type="button" onClick={() => handleDelete(e.matricule)} aria-label={`Supprimer ${e.nom} ${e.prenoms}`} data-tooltip="Supprimer">⌫</button>
+                  <td data-label="Matricule">{e.matricule}</td>
+                  <td data-label="Étudiant"><div className="student-identity"><span className="student-avatar">{initiales(e)}</span><span>{e.nom} {e.prenoms}</span></div></td>
+                  <td data-label="Niveau"><span className={`level-badge level-${String(e.niveau).toLowerCase()}`}>{e.niveau}</span></td>
+                  <td data-label="Parcours"><span className={`parcours-badge parcours-${String(e.parcours).toLowerCase()}`}>{e.parcours}</span></td><td data-label="Email">{e.adr_email}</td>
+                  <td data-label="Actions" className="student-actions">
+                    {can("etudiants", "modifier") && <button className="icon-button icon-button-edit" type="button" onClick={() => handleEdit(e)} aria-label={`Modifier ${e.nom} ${e.prenoms}`} data-tooltip="Modifier"><TableActionIcon type="edit" /></button>}
+                    {can("etudiants", "supprimer") && <button className="icon-button icon-button-danger" type="button" onClick={() => handleDelete(e.matricule)} aria-label={`Supprimer ${e.nom} ${e.prenoms}`} data-tooltip="Supprimer"><TableActionIcon type="delete" /></button>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
+        {!loading && <TablePagination page={page} totalItems={etudiantsFiltres.length} pageSize={pageSize} onPageChange={setPage} />}
       </section>
     </div>
   );

@@ -16,10 +16,18 @@ class Soutenir
         try {
             return $this->pdo
                 ->query(
-                    'SELECT s.*, e.nom AS etudiant_nom, e.prenoms AS etudiant_prenoms, o.design AS organisme
+                    'SELECT s.*, e.nom AS etudiant_nom, e.prenoms AS etudiant_prenoms, o.design AS organisme,
+                            CONCAT(pres.civilite, " ", pres.nom, " ", pres.prenoms) AS president_nom,
+                            CONCAT(exam.civilite, " ", exam.nom, " ", exam.prenoms) AS examinateur_nom,
+                            CONCAT(rint.civilite, " ", rint.nom, " ", rint.prenoms) AS rapporteur_int_nom,
+                            CASE WHEN rext.idprof IS NULL THEN NULL ELSE CONCAT(rext.civilite, " ", rext.nom, " ", rext.prenoms) END AS rapporteur_ext_nom
                      FROM soutenir s
                      INNER JOIN etudiant e ON e.matricule = s.matricule
                      INNER JOIN organisme o ON o.idorg = s.idorg
+                     INNER JOIN professeur pres ON pres.idprof = s.president
+                     INNER JOIN professeur exam ON exam.idprof = s.examinateur
+                     INNER JOIN professeur rint ON rint.idprof = s.rapporteur_int
+                     LEFT JOIN professeur rext ON rext.idprof = s.rapporteur_ext
                      ORDER BY s.annee_univ DESC, e.nom'
                 )
                 ->fetchAll();
@@ -36,6 +44,32 @@ class Soutenir
             $statement->execute();
             $result = $statement->fetch();
             return $result ?: null;
+        } catch (PDOException $exception) {
+            throw new RuntimeException($exception->getMessage(), 0, $exception);
+        }
+    }
+
+    public function details(int $id): ?array
+    {
+        try {
+            $statement = $this->pdo->prepare(
+                'SELECT s.*, e.nom AS etudiant_nom, e.prenoms AS etudiant_prenoms, e.niveau, e.parcours,
+                        o.design AS organisme, o.lieu AS organisme_lieu,
+                        CONCAT(pres.civilite, " ", pres.nom, " ", pres.prenoms, " - ", pres.grade) AS president_nom,
+                        CONCAT(exam.civilite, " ", exam.nom, " ", exam.prenoms, " - ", exam.grade) AS examinateur_nom,
+                        CONCAT(rint.civilite, " ", rint.nom, " ", rint.prenoms, " - ", rint.grade) AS rapporteur_int_nom,
+                        CASE WHEN rext.idprof IS NULL THEN NULL ELSE CONCAT(rext.civilite, " ", rext.nom, " ", rext.prenoms, " - ", rext.grade) END AS rapporteur_ext_nom
+                 FROM soutenir s
+                 INNER JOIN etudiant e ON e.matricule = s.matricule
+                 INNER JOIN organisme o ON o.idorg = s.idorg
+                 INNER JOIN professeur pres ON pres.idprof = s.president
+                 INNER JOIN professeur exam ON exam.idprof = s.examinateur
+                 INNER JOIN professeur rint ON rint.idprof = s.rapporteur_int
+                 LEFT JOIN professeur rext ON rext.idprof = s.rapporteur_ext
+                 WHERE s.id_soutenance = :id'
+            );
+            $statement->execute([':id' => $id]);
+            return $statement->fetch() ?: null;
         } catch (PDOException $exception) {
             throw new RuntimeException($exception->getMessage(), 0, $exception);
         }
@@ -93,7 +127,7 @@ class Soutenir
     {
         try {
             $statement = $this->pdo->prepare(
-                'SELECT e.matricule, e.nom, e.prenoms, e.niveau, e.parcours, s.annee_univ, s.note
+                'SELECT e.matricule, e.nom, e.prenoms, s.annee_univ, s.note
                  FROM soutenir s
                  INNER JOIN etudiant e ON e.matricule = s.matricule
                  WHERE s.annee_univ BETWEEN :debut AND :fin
@@ -103,6 +137,34 @@ class Soutenir
             $statement->bindValue(':fin', $fin);
             $statement->execute();
             return $statement->fetchAll();
+        } catch (PDOException $exception) {
+            throw new RuntimeException($exception->getMessage(), 0, $exception);
+        }
+    }
+
+    public function resultatsParNiveau(): array
+    {
+        try {
+            return $this->pdo->query(
+                'SELECT e.niveau, COUNT(*) AS total,
+                        AVG(s.note) AS moyenne,
+                        SUM(CASE WHEN s.note >= 10 THEN 1 ELSE 0 END) AS reussites
+                 FROM soutenir s INNER JOIN etudiant e ON e.matricule = s.matricule
+                 GROUP BY e.niveau ORDER BY e.niveau'
+            )->fetchAll();
+        } catch (PDOException $exception) {
+            throw new RuntimeException($exception->getMessage(), 0, $exception);
+        }
+    }
+
+    public function formData(): array
+    {
+        try {
+            return [
+                'etudiants' => $this->pdo->query('SELECT matricule, nom, prenoms FROM etudiant ORDER BY nom, prenoms')->fetchAll(),
+                'professeurs' => $this->pdo->query('SELECT idprof, civilite, nom, prenoms, grade FROM professeur ORDER BY nom, prenoms')->fetchAll(),
+                'organismes' => $this->pdo->query('SELECT idorg, design FROM organisme ORDER BY design')->fetchAll(),
+            ];
         } catch (PDOException $exception) {
             throw new RuntimeException($exception->getMessage(), 0, $exception);
         }

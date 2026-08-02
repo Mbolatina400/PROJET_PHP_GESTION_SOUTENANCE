@@ -111,7 +111,19 @@ class EtudiantController extends Controller
         }
 
         try {
-            $this->jsonResponse(true, $this->model->byNiveau($niveau));
+            $this->jsonResponse(true, $this->model->reportByNiveau($niveau));
+        } catch (Throwable $exception) {
+            $this->handleException($exception);
+        }
+    }
+
+    public function rapportEffectifs(): void
+    {
+        try {
+            $this->jsonResponse(true, [
+                'effectifs' => $this->model->effectifs(),
+                'resultats' => (new Soutenir())->resultatsParNiveau(),
+            ]);
         } catch (Throwable $exception) {
             $this->handleException($exception);
         }

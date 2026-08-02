@@ -129,6 +129,21 @@ class Etudiant
         }
     }
 
+    public function reportByNiveau(string $niveau): array
+    {
+        try {
+            $statement = $this->pdo->prepare(
+                'SELECT matricule, nom, prenoms, niveau, parcours
+                 FROM etudiant WHERE niveau = :niveau ORDER BY nom, prenoms'
+            );
+            $statement->execute([':niveau' => $niveau]);
+            $students = $statement->fetchAll();
+            return ['total' => count($students), 'etudiants' => $students];
+        } catch (PDOException $exception) {
+            throw new RuntimeException($exception->getMessage(), 0, $exception);
+        }
+    }
+
     public function effectifs(): array
     {
         try {
@@ -145,7 +160,7 @@ class Etudiant
         try {
             return $this->pdo
                 ->query(
-                    'SELECT e.*
+                    'SELECT e.matricule, e.nom, e.prenoms, e.niveau, e.parcours
                      FROM etudiant e
                      LEFT JOIN soutenir s ON s.matricule = e.matricule
                      WHERE s.matricule IS NULL
